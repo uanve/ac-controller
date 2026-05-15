@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AC Climate Control</title>
+    <style>
+        :root { 
+            --bg: #0f172a; 
+            --card: #1e293b; 
+            --text: #f8fafc; 
+            --accent: #38bdf8; 
+            --on: #22c55e; 
+            --off: #ef4444; 
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: var(--bg); 
+            color: var(--text); 
+            margin: 0; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+        }
+
+        .card { 
+            background: var(--card); 
+            padding: 20px; 
+            border-radius: 16px; 
+            width: 100%; 
+            max-width: 400px; 
+            margin-bottom: 20px; 
+            text-align: center; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3); 
+        }
+
+        .temp-display { 
+            font-size: 4rem; 
+            font-weight: bold; 
+            color: var(--accent); 
+            margin: 10px 0; 
+        }
+
+        /* AC Status LED */
+        .ac-glow { 
+            height: 12px; 
+            width: 12px; 
+            border-radius: 50%; 
+            display: inline-block; 
+            margin-right: 8px; 
+            transition: 0.3s;
+        }
+        .glow-ON { background: #00f2ff; box-shadow: 0 0 12px #00f2ff; }
+        .glow-OFF { background: #444; }
+
+        /* Buttons and Inputs */
+        button { 
+            cursor: pointer; border: none; border-radius: 8px; padding: 12px; 
+            font-weight: bold; background: var(--accent); color: #000; 
+            transition: 0.2s; width: 100%; 
+        }
+        button:active { transform: scale(0.98); }
+        .btn-del { background: rgba(239, 68, 68, 0.2); color: var(--off); width: auto; padding: 5px 10px; }
+
+        input[type=range] { width: 100%; margin: 20px 0; cursor: pointer; }
+        input[type=time], select { 
+            background: #0f172a; border: 1px solid #334155; 
+            color: white; padding: 8px; border-radius: 6px; 
+        }
+
+        /* Table Styling */
+        table { width: 100%; margin-top: 15px; border-collapse: collapse; }
+        th { font-size: 0.7rem; opacity: 0.5; text-align: left; padding-bottom: 8px; }
+        td { padding: 12px 0; border-bottom: 1px solid #334155; }
+
+        .ON { color: var(--on); } 
+        .OFF { color: var(--off); }
+        .disabled-row { opacity: 0.4; }
+
+        .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div class="header-row">
+            <span style="font-size: 0.8rem; opacity: 0.7; letter-spacing: 1px;">ROOM TEMPERATURE</span>
+            <span>
+                <div id="acLed" class="ac-glow glow-{{ state.ac_power }}"></div>
+                <small id="acText" style="font-weight: bold;">AC {{ state.ac_power }}</small>
+            </span>
+        </div>
+        
+        <div class="temp-display"><span id="currTemp">{{ state.current_temp }}</span>°C</div>
+        
+        <div style="border-top: 1px solid #334155; padding-top: 15px; margin-top: 10px;">
+            <div style="margin-bottom: 15px;">
+                Occupancy Mode: <strong id="occStatus" class="{{ state.occupancy_mode }}">{{ state.occupancy_mode }}</strong>
+            </div>
+            <button onclick="apiCall('/api/toggle_occupancy')">
+                SWITCH TO {{ 'AWAY' if state.occupancy_mode == 'ON' else 'HOME' }}
+            </button>
+        </div>
+    </div>
+
+    <div class="card">
+        <span style="font-size: 0.8rem; opacity: 0.7;">TARGET SETPOINT</span>
+        <div style="font-size: 1.8rem; font-weight: bold; margin-top: 5px;"><span id="targetVal">{{ state.target_temp }}</span>°C</div>
+        <input type="range" min="18" max="30" step="0.5" value="{{ state.target_temp }}" 
+               oninput="document.getElementById('targetVal').innerText = this.value"
+               onchange="updateTarget(this.value)">
+    </div>
+
+    <div class="card">
+        <div class="header-row">
+            <strong>Daily Schedule</strong>
+            <label style="font-size: 0.8rem; cursor: pointer;">
+                MASTER 
+                <input type="checkbox" {{ 'checked' if state.schedule_running }} onchange="apiCall('/api/schedule/master_toggle')">
+            </label>
+        </div>
+
+        <table id="scheduleTable">
+            <thead>
+                <tr>
+                    <th>TIME</th>
+                    <th>MODE</th>
+                    <th>ACTIVE</th>
+                    <th style="text-align:right;">ACTION</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in state.schedule %}
+                <tr class="{{ '' if job.active else 'disabled-row' }}">
+                    <td>{{ job.time }}</td>
+                    <td class="{{ job.action }}"><b>{{ 'HOME' if job.action == 'ON' else 'AWAY' }}</b></td>
+                    <td>
+                        <input type="checkbox" {{ 'checked' if job.active }} 
+                               onchange="apiCall('/api/schedule/toggle_active', {id: {{job.id}} })">
+                    </td>
+                    <td style="text-align:right;">
+                        <button class="btn-del" onclick="apiCall('/api/schedule/delete', {id: {{job.id}}})">✕</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div style="margin-top: 20px; display: flex; gap: 8px;">
+            <input type="time" id="newTime" style="flex: 2;">
+            <select id="newAction" style="flex: 1.5;">
+                <option value="ON">HOME</option>
+                <option value="OFF">AWAY</option>
+            </select>
+            <button onclick="addEvent()" style="flex: 1;">ADD</button>
+        </div>
+    </div>
+
+    <script>
+        // API Wrapper to ensure server sync before UI refresh
+        async function apiCall(url, body = {}) {
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+                if (response.ok) {
+                    window.location.reload(); 
+                }
+            } catch (err) {
+                console.error("Communication error:", err);
+            }
+        }
+
+        // Handle the Temperature Slider
+        function updateTarget(val) {
+            fetch('/api/set_target', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({target: val})
+            });
+        }
+
+        // Add Event Logic
+        function addEvent() {
+            const time = document.getElementById('newTime').value;
+            const action = document.getElementById('newAction').value;
+            if (!time) return alert("Select a time first");
+            apiCall('/api/schedule/add', {time: time, action: action});
+        }
+
+        // Live Polling for Temperature and AC state
+        function updateUI() {
+            fetch('/api/status')
+                .then(res => res.json())
+                .then(data => {
+                    // Update current reading
+                    document.getElementById('currTemp').innerText = data.current_temp;
+                    
+                    // Update AC Visuals
+                    const acLed = document.getElementById('acLed');
+                    const acTxt = document.getElementById('acText');
+                    acLed.className = 'ac-glow glow-' + data.ac_power;
+                    acTxt.innerText = "AC " + (data.ac_power === 'ON' ? 'COOLING' : 'IDLE');
+                    acTxt.style.color = data.ac_power === 'ON' ? '#00f2ff' : 'inherit';
+
+                    // Update Occupancy Label
+                    const occ = document.getElementById('occStatus');
+                    occ.innerText = data.occupancy_mode === 'ON' ? 'HOME' : 'AWAY';
+                    occ.className = data.occupancy_mode;
+                })
+                .catch(e => console.log("Polling suspended..."));
+        }
+
+        // Update UI every 2 seconds
+        setInterval(updateUI, 2000);
+    </script>
+</body>
+</html>
