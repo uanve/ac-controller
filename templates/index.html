@@ -10,6 +10,7 @@
             --card: #1e293b; 
             --text: #f8fafc; 
             --accent: #38bdf8; 
+            --humidity-accent: #a78bfa;
             --on: #22c55e; 
             --off: #ef4444; 
         }
@@ -34,16 +35,36 @@
             margin-bottom: 20px; 
             text-align: center; 
             box-shadow: 0 10px 25px rgba(0,0,0,0.3); 
+            box-sizing: border-box;
+        }
+
+        .stats-grid {
+            display: flex;
+            justify-content: space-between;
+            margin: 15px 0;
+        }
+
+        .stat-col {
+            flex: 1;
+            text-align: center;
+        }
+
+        .stat-col:first-child {
+            border-right: 1px solid #334155;
         }
 
         .temp-display { 
-            font-size: 4rem; 
+            font-size: 2.8rem; 
             font-weight: bold; 
             color: var(--accent); 
-            margin: 10px 0; 
         }
 
-        /* AC Status LED */
+        .humid-display {
+            font-size: 2.8rem; 
+            font-weight: bold; 
+            color: var(--humidity-accent); 
+        }
+
         .ac-glow { 
             height: 12px; 
             width: 12px; 
@@ -55,7 +76,6 @@
         .glow-ON { background: #00f2ff; box-shadow: 0 0 12px #00f2ff; }
         .glow-OFF { background: #444; }
 
-        /* Buttons and Inputs */
         button { 
             cursor: pointer; border: none; border-radius: 8px; padding: 12px; 
             font-weight: bold; background: var(--accent); color: #000; 
@@ -64,13 +84,12 @@
         button:active { transform: scale(0.98); }
         .btn-del { background: rgba(239, 68, 68, 0.2); color: var(--off); width: auto; padding: 5px 10px; }
 
-        input[type=range] { width: 100%; margin: 20px 0; cursor: pointer; }
+        input[type=range] { width: 100%; margin: 15px 0; cursor: pointer; }
         input[type=time], select { 
             background: #0f172a; border: 1px solid #334155; 
             color: white; padding: 8px; border-radius: 6px; 
         }
 
-        /* Table Styling */
         table { width: 100%; margin-top: 15px; border-collapse: collapse; }
         th { font-size: 0.7rem; opacity: 0.5; text-align: left; padding-bottom: 8px; }
         td { padding: 12px 0; border-bottom: 1px solid #334155; }
@@ -86,14 +105,23 @@
 
     <div class="card">
         <div class="header-row">
-            <span style="font-size: 0.8rem; opacity: 0.7; letter-spacing: 1px;">ROOM TEMPERATURE</span>
+            <span style="font-size: 0.8rem; opacity: 0.7; letter-spacing: 1px;">LIVE METRICS</span>
             <span>
                 <div id="acLed" class="ac-glow glow-{{ state.ac_power }}"></div>
                 <small id="acText" style="font-weight: bold;">AC {{ state.ac_power }}</small>
             </span>
         </div>
         
-        <div class="temp-display"><span id="currTemp">{{ state.current_temp }}</span>°C</div>
+        <div class="stats-grid">
+            <div class="stat-col">
+                <div style="font-size: 0.7rem; opacity: 0.6;">TEMPERATURE</div>
+                <div class="temp-display"><span id="currTemp">{{ state.current_temp }}</span>°C</div>
+            </div>
+            <div class="stat-col">
+                <div style="font-size: 0.7rem; opacity: 0.6;">HUMIDITY</div>
+                <div class="humid-display"><span id="currHumid">{{ state.current_humidity }}</span>%</div>
+            </div>
+        </div>
         
         <div style="border-top: 1px solid #334155; padding-top: 15px; margin-top: 10px;">
             <div style="margin-bottom: 15px;">
@@ -106,11 +134,19 @@
     </div>
 
     <div class="card">
-        <span style="font-size: 0.8rem; opacity: 0.7;">TARGET SETPOINT</span>
-        <div style="font-size: 1.8rem; font-weight: bold; margin-top: 5px;"><span id="targetVal">{{ state.target_temp }}</span>°C</div>
-        <input type="range" min="18" max="30" step="0.5" value="{{ state.target_temp }}" 
+        <span style="font-size: 0.8rem; opacity: 0.7;">TARGET TEMP SETPOINT</span>
+        <div style="font-size: 1.8rem; font-weight: bold; margin-top: 5px; color: var(--accent);"><span id="targetVal">{{ state.target_temp }}</span>°C</div>
+        <input type="range" min="18" max="35" step="0.5" value="{{ state.target_temp }}" 
                oninput="document.getElementById('targetVal').innerText = this.value"
                onchange="updateTarget(this.value)">
+    </div>
+
+    <div class="card">
+        <span style="font-size: 0.8rem; opacity: 0.7;">TARGET HUMIDITY SETPOINT</span>
+        <div style="font-size: 1.8rem; font-weight: bold; margin-top: 5px; color: var(--humidity-accent);"><span id="targetHumidVal">{{ state.target_humidity }}</span>%</div>
+        <input type="range" min="0" max="100" step="1" value="{{ state.target_humidity }}" 
+               oninput="document.getElementById('targetHumidVal').innerText = this.value"
+               onchange="updateHumidityTarget(this.value)">
     </div>
 
     <div class="card">
@@ -159,7 +195,6 @@
     </div>
 
     <script>
-        // API Wrapper to ensure server sync before UI refresh
         async function apiCall(url, body = {}) {
             try {
                 const response = await fetch(url, {
@@ -175,7 +210,6 @@
             }
         }
 
-        // Handle the Temperature Slider
         function updateTarget(val) {
             fetch('/api/set_target', {
                 method: 'POST',
@@ -184,7 +218,14 @@
             });
         }
 
-        // Add Event Logic
+        function updateHumidityTarget(val) {
+            fetch('/api/set_target_humidity', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({target_humidity: val})
+            });
+        }
+
         function addEvent() {
             const time = document.getElementById('newTime').value;
             const action = document.getElementById('newAction').value;
@@ -192,22 +233,19 @@
             apiCall('/api/schedule/add', {time: time, action: action});
         }
 
-        // Live Polling for Temperature and AC state
         function updateUI() {
             fetch('/api/status')
                 .then(res => res.json())
                 .then(data => {
-                    // Update current reading
-                    document.getElementById('currTemp').innerText = data.current_temp;
+                    document.getElementById('currTemp').innerText = float(data.current_temp).toFixed(1);
+                    document.getElementById('currHumid').innerText = float(data.current_humidity).toFixed(1);
                     
-                    // Update AC Visuals
                     const acLed = document.getElementById('acLed');
                     const acTxt = document.getElementById('acText');
                     acLed.className = 'ac-glow glow-' + data.ac_power;
                     acTxt.innerText = "AC " + (data.ac_power === 'ON' ? 'COOLING' : 'IDLE');
                     acTxt.style.color = data.ac_power === 'ON' ? '#00f2ff' : 'inherit';
 
-                    // Update Occupancy Label
                     const occ = document.getElementById('occStatus');
                     occ.innerText = data.occupancy_mode === 'ON' ? 'HOME' : 'AWAY';
                     occ.className = data.occupancy_mode;
@@ -215,7 +253,6 @@
                 .catch(e => console.log("Polling suspended..."));
         }
 
-        // Update UI every 2 seconds
         setInterval(updateUI, 2000);
     </script>
 </body>
