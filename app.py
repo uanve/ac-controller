@@ -1,5 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 import RPi.GPIO as GPIO
+import signal
+import sys
 import threading
 import subprocess
 import board
@@ -160,6 +162,20 @@ def add_event():
 def delete_event():
     state["schedule"] = [j for j in state["schedule"] if j["id"] != request.json.get("id")]
     return jsonify(success=True)
+
+def shutdown_handler(signum, frame):
+    print("Shutting down safely...")
+
+    try:
+        GPIO.output(AC_RELAY_PIN, GPIO.LOW)
+        GPIO.cleanup()
+    except Exception as e:
+        print(f"GPIO cleanup error: {e}")
+
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, shutdown_handler)
+signal.signal(signal.SIGINT, shutdown_handler)
 
 if __name__ == '__main__':
     try:
