@@ -1,7 +1,5 @@
 import time
 import threading
-import json
-from urllib import request as urllib_request
 from datetime import datetime
 import app.config as config
 from app.storage import StorageManager
@@ -13,26 +11,16 @@ class ClimateLogicEngine:
         self.storage = storage_mgr
         self.hw = hw_mgr
         self.last_history_slot = None
-        self.last_outside_poll_ts = 0.0
 
-    def poll_outside_sensor(self):
-        now_ts = time.time()
-        if (now_ts - self.last_outside_poll_ts) < config.OUTSIDE_SENSOR_POLL_INTERVAL_SECONDS:
+    def refresh_outside_sensor_status(self, now_dt: datetime):
+        if not self.state.outside_last_update:
+            self.state.outside_status = "offline"
             return
 
-        self.last_outside_poll_ts = now_ts
-
         try:
-            req = urllib_request.Request(config.OUTSIDE_SENSOR_URL, method="GET")
-            with urllib_request.urlopen(req, timeout=config.OUTSIDE_SENSOR_TIMEOUT_SECONDS) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-
-            self.state.outside_status = str(payload.get("status", "online")).lower()
-            self.state.outside_temp = round(float(payload.get("temperature_C", self.state.outside_temp)), 2)
-            self.state.outside_humidity = round(float(payload.get("humidity_percent", self.state.outside_humidity)), 2)
-            self.state.outside_pressure = round(float(payload.get("pressure_hPa", self.state.outside_pressure)), 2)
-            self.state.outside_uptime_ms = int(payload.get("uptime_ms", self.state.outside_uptime_ms))
-            self.state.outside_last_update = datetime.now().isoformat(timespec="seconds")
+            last_dt = datetime.fromisoformat(self.state.outside_last_update)
+            age_seconds = (now_dt - last_dt).total_seconds()
+            self.state.outside_status = "online" if age_seconds <= config.OUTSIDE_SENSOR_STALE_SECONDS else "offline"
         except Exception:
             self.state.outside_status = "offline"
 
@@ -155,8 +143,8 @@ class ClimateLogicEngine:
         def run():
             while True:
                 self.state.current_temp, self.state.current_humidity = self.hw.read_sensors()
-                self.poll_outside_sensor()
                 now = datetime.now()
+                self.refresh_outside_sensor_status(now)
                 
                 self.append_history_sample(now)
                 self.process_schedule(now)
