@@ -53,6 +53,19 @@
             border-right: 1px solid #334155;
         }
 
+        .outside-row {
+            border-top: 1px solid #334155;
+            margin-top: 12px;
+            padding-top: 12px;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .outside-status-online { color: var(--on); }
+        .outside-status-offline { color: var(--off); }
+
         .temp-display { 
             font-size: 2.8rem; 
             font-weight: bold; 
@@ -100,20 +113,52 @@
         .disabled-row { opacity: 0.4; }
 
         .header-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .chart-wrap {
+        .history-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .chart-shell {
             width: 100%;
             height: 220px;
             border: 1px solid #334155;
             border-radius: 10px;
             background: #0b1222;
             margin-top: 12px;
-            padding: 8px;
             box-sizing: border-box;
+            display: flex;
+            overflow: hidden;
+        }
+        .axis-wrap {
+            flex: 0 0 46px;
+            background: #0b1222;
+            border-right: 1px solid #223049;
+        }
+        .axis-wrap.right {
+            border-right: none;
+            border-left: 1px solid #223049;
+        }
+        #historyYAxisLeft,
+        #historyYAxisRight {
+            width: 46px;
+            height: 220px;
+            display: block;
+        }
+        .chart-wrap {
+            flex: 1;
+            height: 220px;
+            margin-top: 0;
+            padding: 0;
+            box-sizing: border-box;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: thin;
+            touch-action: pan-x;
         }
         #historySvg {
-            width: 100%;
             height: 100%;
             display: block;
+            min-width: 100%;
         }
         .legend {
             display: flex;
@@ -153,6 +198,20 @@
                 <div class="humid-display"><span id="currHumid">{{ state.current_humidity }}</span>%</div>
             </div>
         </div>
+
+        <div class="outside-row">
+            <div>
+                <div style="font-size: 0.7rem; opacity: 0.6;">OUTSIDE</div>
+                <strong><span id="outsideTemp">{{ state.outside_temp }}</span>°C</strong>
+                <span style="opacity: 0.8; margin-left: 8px;"><span id="outsideHumid">{{ state.outside_humidity }}</span>% RH</span>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 0.7rem; opacity: 0.6;">SENSOR STATUS</div>
+                {% set outside_cls = 'outside-status-online' if state.outside_status == 'online' else 'outside-status-offline' %}
+                <strong id="outsideStatus" class="{{ outside_cls }}">{{ state.outside_status|upper }}</strong>
+                <div style="font-size: 0.75rem; opacity: 0.75;"><span id="outsidePressure">{{ state.outside_pressure }}</span> hPa</div>
+            </div>
+        </div>
         
         <div style="border-top: 1px solid #334155; padding-top: 15px; margin-top: 10px;">
             <div style="margin-bottom: 15px;">
@@ -183,19 +242,29 @@
     <div class="card">
         <div class="header-row">
             <strong>Temperature & Humidity History</strong>
-            <select id="historyDays" style="width: auto;">
-                <option value="1">1 day</option>
-                <option value="3">3 days</option>
-                <option value="7" selected>7 days</option>
-                <option value="14">14 days</option>
-                <option value="30">30 days</option>
-                <option value="60">60 days</option>
-                <option value="90">90 days</option>
-            </select>
+            <div class="history-controls">
+                <select id="historyDays" style="width: auto;">
+                    <option value="1">1 day</option>
+                    <option value="3">3 days</option>
+                    <option value="7" selected>7 days</option>
+                    <option value="14">14 days</option>
+                    <option value="30">30 days</option>
+                    <option value="60">60 days</option>
+                    <option value="90">90 days</option>
+                </select>
+            </div>
         </div>
         <div id="historyMeta" style="font-size: 0.78rem; opacity: 0.8;">Loading history...</div>
-        <div class="chart-wrap">
-            <svg id="historySvg" viewBox="0 0 360 200" preserveAspectRatio="none"></svg>
+        <div class="chart-shell">
+            <div class="axis-wrap">
+                <svg id="historyYAxisLeft" viewBox="0 0 46 200" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="chart-wrap">
+                <svg id="historySvg" viewBox="0 0 360 200" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="axis-wrap right">
+                <svg id="historyYAxisRight" viewBox="0 0 46 200" preserveAspectRatio="none"></svg>
+            </div>
         </div>
         <div class="legend">
             <span><span class="legend-dot" style="background:#38bdf8;"></span>Temperature (C)</span>
@@ -361,6 +430,14 @@
                 .then(data => {
                     document.getElementById('currTemp').innerText = parseFloat(data.current_temp).toFixed(1);
                     document.getElementById('currHumid').innerText = parseFloat(data.current_humidity).toFixed(1);
+                    document.getElementById('outsideTemp').innerText = Number(data.outside_temp || 0).toFixed(2);
+                    document.getElementById('outsideHumid').innerText = Number(data.outside_humidity || 0).toFixed(2);
+                    document.getElementById('outsidePressure').innerText = Number(data.outside_pressure || 0).toFixed(2);
+
+                    const outsideStatus = document.getElementById('outsideStatus');
+                    const normalizedOutside = String(data.outside_status || 'unknown').toLowerCase();
+                    outsideStatus.innerText = normalizedOutside.toUpperCase();
+                    outsideStatus.className = normalizedOutside === 'online' ? 'outside-status-online' : 'outside-status-offline';
                     
                     const acLed = document.getElementById('acLed');
                     const acTxt = document.getElementById('acText');
@@ -394,50 +471,168 @@
             return node;
         }
 
-        function normalizeSeries(values, minOut, maxOut) {
-            const minVal = Math.min(...values);
-            const maxVal = Math.max(...values);
-            if (minVal === maxVal) {
-                return values.map(() => (minOut + maxOut) / 2);
+        function calcRange(values, minSpan = 1) {
+            let minVal = Math.min(...values);
+            let maxVal = Math.max(...values);
+            if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) {
+                return { min: 0, max: minSpan };
             }
-            return values.map(v => maxOut - ((v - minVal) / (maxVal - minVal)) * (maxOut - minOut));
+            if ((maxVal - minVal) < minSpan) {
+                const center = (maxVal + minVal) / 2;
+                minVal = center - (minSpan / 2);
+                maxVal = center + (minSpan / 2);
+            }
+            const pad = (maxVal - minVal) * 0.08;
+            return { min: minVal - pad, max: maxVal + pad };
         }
 
-        function renderHistoryChart(points) {
-            const svg = document.getElementById('historySvg');
-            svg.innerHTML = '';
+        function scaleToY(value, minVal, maxVal, topY, bottomY) {
+            if (maxVal === minVal) return (topY + bottomY) / 2;
+            return bottomY - ((value - minVal) / (maxVal - minVal)) * (bottomY - topY);
+        }
 
-            const width = 360;
+        function safeNumber(value, fallback = 0) {
+            const n = Number(value);
+            return Number.isFinite(n) ? n : fallback;
+        }
+
+        function clearSvg(svg) {
+            while (svg.firstChild) {
+                svg.removeChild(svg.firstChild);
+            }
+        }
+
+        function renderYAxis(svgId, color, unit, minVal, maxVal, isRight) {
+            const svg = document.getElementById(svgId);
+            clearSvg(svg);
+
+            const width = 46;
             const height = 200;
-            const padLeft = 26;
-            const padRight = 8;
-            const padTop = 12;
-            const padBottom = 24;
+            const topY = 14;
+            const bottomY = height - 26;
+            const ticks = 5;
+            const axisX = isRight ? 1 : width - 1;
 
-            if (!points.length) {
+            const axis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            axis.setAttribute('x1', axisX);
+            axis.setAttribute('x2', axisX);
+            axis.setAttribute('y1', topY);
+            axis.setAttribute('y2', bottomY);
+            axis.setAttribute('stroke', color);
+            axis.setAttribute('stroke-width', '1');
+            svg.appendChild(axis);
+
+            for (let i = 0; i < ticks; i++) {
+                const ratio = i / (ticks - 1);
+                const y = topY + ratio * (bottomY - topY);
+                const value = maxVal - ratio * (maxVal - minVal);
+
+                const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                const tickFromX = isRight ? axisX : axisX - 4;
+                const tickToX = isRight ? axisX + 4 : axisX;
+                tick.setAttribute('x1', tickFromX);
+                tick.setAttribute('x2', tickToX);
+                tick.setAttribute('y1', y);
+                tick.setAttribute('y2', y);
+                tick.setAttribute('stroke', '#64748b');
+                tick.setAttribute('stroke-width', '1');
+                svg.appendChild(tick);
+
+                const textX = isRight ? 7 : 2;
+                const label = unit === '%' ? `${value.toFixed(0)}${unit}` : `${value.toFixed(1)}${unit}`;
+                svg.appendChild(createSvgText(textX, y + 3, label, color, '9'));
+            }
+        }
+
+        const HISTORY_FETCH_DAYS = 90;
+        let lastHistoryPoints = [];
+        let currentViewDays = 7;
+
+        function rerenderFromCache() {
+            renderHistoryChart(lastHistoryPoints, currentViewDays);
+        }
+
+        function renderHistoryChart(points, viewDays) {
+            const svg = document.getElementById('historySvg');
+            const chartWrap = document.querySelector('.chart-wrap');
+            svg.innerHTML = '';
+            lastHistoryPoints = Array.isArray(points) ? points : [];
+            currentViewDays = Number(viewDays) || 7;
+
+            const viewportWidth = Math.max(240, chartWrap.clientWidth || 240);
+            const height = 200;
+            const padLeft = 10;
+            const padRight = 10;
+            const padTop = 14;
+            const padBottom = 26;
+            const viewWindowMs = Math.max(1, currentViewDays) * 24 * 60 * 60 * 1000;
+
+            const pointsWithTime = points
+                .map((p) => ({ ...p, t: new Date(p.ts).getTime() }))
+                .filter((p) => Number.isFinite(p.t))
+                .sort((a, b) => a.t - b.t);
+
+            const minT = pointsWithTime.length ? pointsWithTime[0].t : Date.now();
+            const maxT = pointsWithTime.length ? pointsWithTime[pointsWithTime.length - 1].t : minT;
+            const totalSpanMs = Math.max(1, maxT - minT);
+            const plotWidth = Math.max(viewportWidth - padLeft - padRight, Math.ceil((totalSpanMs / viewWindowMs) * (viewportWidth - padLeft - padRight)));
+            const width = padLeft + plotWidth + padRight;
+
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+            svg.style.width = `${width}px`;
+
+            if (!pointsWithTime.length) {
+                renderYAxis('historyYAxisLeft', '#38bdf8', 'C', 0, 1, false);
+                renderYAxis('historyYAxisRight', '#a78bfa', '%', 0, 1, true);
                 svg.appendChild(createSvgText(120, 100, 'No history in this interval', '#64748b', '12'));
                 return;
             }
 
-            const temps = points.map(p => p.temp);
-            const humids = points.map(p => (p.humidity ?? 0));
+            const temps = pointsWithTime.map(p => safeNumber(p.temp, 0));
+            const humids = pointsWithTime.map(p => safeNumber(p.humidity, 0));
 
-            const xVals = points.map((_, i) => {
-                if (points.length === 1) return (padLeft + (width - padRight)) / 2;
-                return padLeft + (i / (points.length - 1)) * (width - padLeft - padRight);
+            const tempRange = calcRange(temps, 1.5);
+            const humidRange = calcRange(humids, 4);
+
+            const topY = padTop;
+            const bottomY = height - padBottom;
+            const leftX = padLeft;
+            const rightX = width - padRight;
+
+            renderYAxis('historyYAxisLeft', '#38bdf8', 'C', tempRange.min, tempRange.max, false);
+            renderYAxis('historyYAxisRight', '#a78bfa', '%', humidRange.min, humidRange.max, true);
+
+            const xVals = pointsWithTime.map((p) => {
+                if (maxT === minT) return (leftX + rightX) / 2;
+                return leftX + ((p.t - minT) / (maxT - minT)) * (rightX - leftX);
             });
 
-            const tempY = normalizeSeries(temps, padTop, height - padBottom);
-            const humidY = normalizeSeries(humids, padTop, height - padBottom);
+            const tempY = temps.map(v => scaleToY(v, tempRange.min, tempRange.max, topY, bottomY));
+            const humidY = humids.map(v => scaleToY(v, humidRange.min, humidRange.max, topY, bottomY));
 
-            const grid = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-            grid.setAttribute('x1', padLeft);
-            grid.setAttribute('x2', width - padRight);
-            grid.setAttribute('y1', height - padBottom);
-            grid.setAttribute('y2', height - padBottom);
-            grid.setAttribute('stroke', '#334155');
-            grid.setAttribute('stroke-width', '1');
-            svg.appendChild(grid);
+            const yTicks = 5;
+            for (let i = 0; i < yTicks; i++) {
+                const ratio = i / (yTicks - 1);
+                const y = topY + ratio * (bottomY - topY);
+
+                const grid = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                grid.setAttribute('x1', leftX);
+                grid.setAttribute('x2', rightX);
+                grid.setAttribute('y1', y);
+                grid.setAttribute('y2', y);
+                grid.setAttribute('stroke', '#25324a');
+                grid.setAttribute('stroke-width', '1');
+                svg.appendChild(grid);
+            }
+
+            const axisBottom = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            axisBottom.setAttribute('x1', leftX);
+            axisBottom.setAttribute('x2', rightX);
+            axisBottom.setAttribute('y1', bottomY);
+            axisBottom.setAttribute('y2', bottomY);
+            axisBottom.setAttribute('stroke', '#334155');
+            axisBottom.setAttribute('stroke-width', '1');
+            svg.appendChild(axisBottom);
 
             const tempPoints = xVals.map((x, i) => ({x, y: tempY[i]}));
             const humidPoints = xVals.map((x, i) => ({x, y: humidY[i]}));
@@ -445,20 +640,44 @@
             svg.appendChild(createSvgLine(tempPoints, '#38bdf8'));
             svg.appendChild(createSvgLine(humidPoints, '#a78bfa'));
 
-            const firstLabel = points[0].ts.slice(5, 16).replace('T', ' ');
-            const lastLabel = points[points.length - 1].ts.slice(5, 16).replace('T', ' ');
-            svg.appendChild(createSvgText(padLeft, height - 6, firstLabel));
-            svg.appendChild(createSvgText(width - 96, height - 6, lastLabel));
+            const minLabelSpacingPx = 72;
+            const targetXTicks = Math.max(2, Math.floor((rightX - leftX) / minLabelSpacingPx));
+            for (let i = 0; i < targetXTicks; i++) {
+                const ratio = targetXTicks === 1 ? 0 : i / (targetXTicks - 1);
+                const x = leftX + ratio * (rightX - leftX);
+                const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                tick.setAttribute('x1', x);
+                tick.setAttribute('x2', x);
+                tick.setAttribute('y1', bottomY);
+                tick.setAttribute('y2', bottomY + 5);
+                tick.setAttribute('stroke', '#475569');
+                tick.setAttribute('stroke-width', '1');
+                svg.appendChild(tick);
+
+                const tickTime = new Date(minT + ratio * (maxT - minT));
+                const label = `${String(tickTime.getHours()).padStart(2, '0')}:${String(tickTime.getMinutes()).padStart(2, '0')}`;
+                svg.appendChild(createSvgText(Math.max(2, x - 14), height - 6, label, '#94a3b8', '9'));
+            }
+
+            const firstLabel = pointsWithTime[0].ts.slice(5, 16).replace('T', ' ');
+            const lastLabel = pointsWithTime[pointsWithTime.length - 1].ts.slice(5, 16).replace('T', ' ');
+            svg.appendChild(createSvgText(leftX, 11, `Start ${firstLabel}`, '#64748b', '9'));
+            svg.appendChild(createSvgText(Math.max(leftX, rightX - 96), 11, `End ${lastLabel}`, '#64748b', '9'));
+
+            const nearRightEdge = (chartWrap.scrollWidth - chartWrap.clientWidth - chartWrap.scrollLeft) < 24;
+            if (nearRightEdge || !chartWrap.dataset.userScrolled) {
+                chartWrap.scrollLeft = chartWrap.scrollWidth;
+            }
         }
 
         async function loadHistory() {
-            const days = document.getElementById('historyDays').value;
+            const days = Number(document.getElementById('historyDays').value) || 7;
             const meta = document.getElementById('historyMeta');
             try {
-                const res = await fetch(`/api/history?days=${days}`);
+                const res = await fetch(`/api/history?days=${HISTORY_FETCH_DAYS}`);
                 const data = await res.json();
                 const points = Array.isArray(data.points) ? data.points : [];
-                renderHistoryChart(points);
+                renderHistoryChart(points, days);
 
                 if (!points.length) {
                     meta.innerText = `No samples for last ${days} day(s)`;
@@ -466,13 +685,24 @@
                 }
 
                 const latest = points[points.length - 1];
-                meta.innerText = `Samples: ${points.length} | Latest: ${latest.ts.replace('T', ' ')} | Temp: ${Number(latest.temp).toFixed(1)} C | Humidity: ${Number(latest.humidity).toFixed(1)}%`;
+                meta.innerText = `View: ${days} day(s) per screen | Available: last ${HISTORY_FETCH_DAYS} day(s) | Samples: ${points.length} | Latest: ${latest.ts.replace('T', ' ')}`;
             } catch (e) {
                 meta.innerText = 'Could not load history';
             }
         }
 
         document.getElementById('historyDays').addEventListener('change', loadHistory);
+
+        const historyWrap = document.querySelector('.chart-wrap');
+        historyWrap.addEventListener('scroll', () => {
+            historyWrap.dataset.userScrolled = '1';
+        });
+        historyWrap.addEventListener('wheel', (e) => {
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                historyWrap.scrollLeft += e.deltaY;
+                e.preventDefault();
+            }
+        }, { passive: false });
 
         loadHistory();
         setInterval(updateUI, 2000);

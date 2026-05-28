@@ -29,6 +29,9 @@ HISTORY_BACKUP_FILE = DATA_DIR / "temperature_history.backup.json"
 AC_RELAY_PIN = 27 
 IR_ON_FILE = COMMANDS_DIR / "on_24.txt"
 IR_OFF_FILE = COMMANDS_DIR / "off.txt"
+OUTSIDE_SENSOR_URL = "http://192.168.1.160/"
+OUTSIDE_SENSOR_TIMEOUT_SECONDS = 1.5
+OUTSIDE_SENSOR_POLL_INTERVAL_SECONDS = 30
 
 # --- Constants & Calendars ---
 HISTORY_RETENTION_DAYS = 90
@@ -49,6 +52,13 @@ class SystemState:
         self.current_humidity: float = 0.0
         self.target_humidity: float = 55.0
         self.humidity_hysteresis: float = 3.0
+
+        self.outside_status: str = "unknown"
+        self.outside_temp: float = 0.0
+        self.outside_humidity: float = 0.0
+        self.outside_pressure: float = 0.0
+        self.outside_uptime_ms: int = 0
+        self.outside_last_update: str = ""
         
         self.schedule_running: bool = True
         self.schedule: List[Dict[str, Any]] = [
@@ -68,6 +78,12 @@ class SystemState:
             "current_humidity": self.current_humidity,
             "target_humidity": self.target_humidity,
             "humidity_hysteresis": self.humidity_hysteresis,
+            "outside_status": self.outside_status,
+            "outside_temp": self.outside_temp,
+            "outside_humidity": self.outside_humidity,
+            "outside_pressure": self.outside_pressure,
+            "outside_uptime_ms": self.outside_uptime_ms,
+            "outside_last_update": self.outside_last_update,
             "schedule_running": self.schedule_running,
             "schedule": self.schedule,
             "last_trigger": self.last_trigger

@@ -40,7 +40,17 @@ class StorageManager:
     def save_state(self):
         snapshot = self.state_obj.to_dict()
         # Keep internal volatile details un-persisted
-        for volatile_key in ["current_temp", "current_humidity", "ac_power"]:
+        for volatile_key in [
+            "current_temp",
+            "current_humidity",
+            "ac_power",
+            "outside_status",
+            "outside_temp",
+            "outside_humidity",
+            "outside_pressure",
+            "outside_uptime_ms",
+            "outside_last_update"
+        ]:
             if volatile_key in snapshot: 
                 del snapshot[volatile_key]
                 
