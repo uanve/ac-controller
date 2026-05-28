@@ -37,11 +37,7 @@ class ClimateLogicEngine:
             self.state.outside_status = "offline"
 
     def update_climate_logic(self):
-        """
-        Executes an advanced Hysteresis curve calculation context.
-        Prevents rapid physical cycling of hardware relays.
-        """
-        # If occupancy logic dictates shutdown, switch off immediately
+
         if self.state.occupancy_mode == "OFF":
             if self.state.ac_power != "OFF":
                 self.state.ac_power = "OFF"
@@ -50,26 +46,63 @@ class ClimateLogicEngine:
 
         current_temp = self.state.current_temp
         target_temp = self.state.target_temp
-        temp_delta = self.state.temp_hysteresis
 
         current_hum = self.state.current_humidity
         target_hum = self.state.target_humidity
-        hum_delta = self.state.humidity_hysteresis
 
-        # Core evaluation matrices with explicit logic guards
-        should_activate = (current_temp > (target_temp + temp_delta)) or (current_hum > (target_hum + hum_delta))
-        should_deactivate = (current_temp < (target_temp - temp_delta)) and (current_hum < (target_hum - hum_delta))
+        # Dynamic delta is bypassed right after user target adjustments.
+        effective_temp_delta = 0 if self.state.temp_override else self.state.temp_hysteresis
+        effective_hum_delta = 0 if self.state.humidity_override else self.state.humidity_hysteresis
 
-        new_status = self.state.ac_power # Default to maintaining current state
+        is_cooling = (self.state.ac_power == "ON" and self.state.ac_mode == config.ACMode.COOL)
+        is_drying = (self.state.ac_power == "ON" and self.state.ac_mode == config.ACMode.DRY)
 
-        if self.state.ac_power == "OFF" and should_activate:
-            new_status = "ON"
-        elif self.state.ac_power == "ON" and should_deactivate:
-            new_status = "OFF"
+        if is_cooling:
+            needs_cooling = current_temp > target_temp
+        else:
+            needs_cooling = current_temp > (target_temp + effective_temp_delta)
 
-        if self.state.ac_power != new_status:
-            self.state.ac_power = new_status
-            self.hw.send_ir_command(new_status, self.state.ac_mode)
+        if is_drying:
+            needs_drying = current_hum > target_hum
+        else:
+            needs_drying = current_hum > (target_hum + effective_hum_delta)
+
+        if current_temp <= target_temp:
+            self.state.temp_override = False
+        if current_hum <= target_hum:
+            self.state.humidity_override = False
+
+        desired_power = "OFF"
+        desired_mode = self.state.ac_mode
+
+        if needs_cooling and needs_drying:
+            t_delta = self.state.temp_hysteresis or 1
+            h_delta = self.state.humidity_hysteresis or 1
+
+            temp_severity = (current_temp - target_temp) / t_delta
+            hum_severity = (current_hum - target_hum) / h_delta
+
+            desired_power = "ON"
+            if temp_severity >= hum_severity:
+                desired_mode = config.ACMode.COOL
+            else:
+                desired_mode = config.ACMode.DRY
+
+        elif needs_cooling:
+            desired_power = "ON"
+            desired_mode = config.ACMode.COOL
+
+        elif needs_drying:
+            desired_power = "ON"
+            desired_mode = config.ACMode.DRY
+
+        mode_changed = desired_mode != self.state.ac_mode
+        power_changed = desired_power != self.state.ac_power
+
+        if power_changed or mode_changed:
+            self.state.ac_power = desired_power
+            self.state.ac_mode = desired_mode
+            self.hw.send_ir_command(desired_power, desired_mode)
 
     def process_schedule(self, now_dt: datetime):
         if not self.state.schedule_running:

@@ -52,6 +52,8 @@ class SystemState:
         self.current_humidity: float = 0.0
         self.target_humidity: float = 55.0
         self.humidity_hysteresis: float = 3.0
+        self.temp_override: bool = False
+        self.humidity_override: bool = False
 
         self.outside_status: str = "unknown"
         self.outside_temp: float = 0.0

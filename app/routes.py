@@ -44,12 +44,14 @@ def toggle_occupancy():
 @api_blueprint.route('/api/set_target', methods=['POST'])
 def set_target():
     state_ptr.target_temp = float(request.json.get("target", 24))
+    state_ptr.temp_override = True
     storage_ptr.save_state()
     return jsonify(success=True)
 
 @api_blueprint.route('/api/set_target_humidity', methods=['POST'])
 def set_target_humidity():
     state_ptr.target_humidity = float(request.json.get("target_humidity", 55))
+    state_ptr.humidity_override = True
     storage_ptr.save_state()
     return jsonify(success=True)
 
