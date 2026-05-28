@@ -1,0 +1,6 @@
+# save
+sudo ir-ctl -d /dev/lirc1 --receive > my_button.txt
+
+# send
+sudo ir-ctl -d /dev/lirc0 --send=on_24.txt
+sudo ir-ctl -d /dev/lirc0 --send=off.txt
