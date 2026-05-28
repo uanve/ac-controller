@@ -210,6 +210,7 @@
                 {% set outside_cls = 'outside-status-online' if state.outside_status == 'online' else 'outside-status-offline' %}
                 <strong id="outsideStatus" class="{{ outside_cls }}">{{ state.outside_status|upper }}</strong>
                 <div style="font-size: 0.75rem; opacity: 0.75;"><span id="outsidePressure">{{ state.outside_pressure }}</span> hPa</div>
+                <div style="font-size: 0.72rem; opacity: 0.72;">Last read: <span id="outsideLastUpdate">{{ state.outside_last_update or '-' }}</span> (<span id="outsideLastAge">-</span>)</div>
             </div>
         </div>
         
@@ -259,7 +260,7 @@
             <div class="axis-wrap">
                 <svg id="historyYAxisLeft" viewBox="0 0 46 200" preserveAspectRatio="none"></svg>
             </div>
-            <div class="chart-wrap">
+            <div class="chart-wrap" id="insideChartWrap">
                 <svg id="historySvg" viewBox="0 0 360 200" preserveAspectRatio="none"></svg>
             </div>
             <div class="axis-wrap right">
@@ -269,6 +270,39 @@
         <div class="legend">
             <span><span class="legend-dot" style="background:#38bdf8;"></span>Temperature (C)</span>
             <span><span class="legend-dot" style="background:#a78bfa;"></span>Humidity (%)</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="header-row">
+            <strong>Outside Temperature & Humidity History</strong>
+            <div class="history-controls">
+                <select id="outsideHistoryDays" style="width: auto;">
+                    <option value="1">1 day</option>
+                    <option value="3">3 days</option>
+                    <option value="7" selected>7 days</option>
+                    <option value="14">14 days</option>
+                    <option value="30">30 days</option>
+                    <option value="60">60 days</option>
+                    <option value="90">90 days</option>
+                </select>
+            </div>
+        </div>
+        <div id="outsideHistoryMeta" style="font-size: 0.78rem; opacity: 0.8;">Loading outside history...</div>
+        <div class="chart-shell">
+            <div class="axis-wrap">
+                <svg id="outsideHistoryYAxisLeft" viewBox="0 0 46 200" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="chart-wrap" id="outsideChartWrap">
+                <svg id="outsideHistorySvg" viewBox="0 0 360 200" preserveAspectRatio="none"></svg>
+            </div>
+            <div class="axis-wrap right">
+                <svg id="outsideHistoryYAxisRight" viewBox="0 0 46 200" preserveAspectRatio="none"></svg>
+            </div>
+        </div>
+        <div class="legend">
+            <span><span class="legend-dot" style="background:#38bdf8;"></span>Outside Temperature (C)</span>
+            <span><span class="legend-dot" style="background:#a78bfa;"></span>Outside Humidity (%)</span>
         </div>
     </div>
 
@@ -433,6 +467,9 @@
                     document.getElementById('outsideTemp').innerText = Number(data.outside_temp || 0).toFixed(2);
                     document.getElementById('outsideHumid').innerText = Number(data.outside_humidity || 0).toFixed(2);
                     document.getElementById('outsidePressure').innerText = Number(data.outside_pressure || 0).toFixed(2);
+                    const outsideLastUpdate = data.outside_last_update || '-';
+                    document.getElementById('outsideLastUpdate').innerText = outsideLastUpdate;
+                    document.getElementById('outsideLastAge').innerText = formatRelativeTime(outsideLastUpdate);
 
                     const outsideStatus = document.getElementById('outsideStatus');
                     const normalizedOutside = String(data.outside_status || 'unknown').toLowerCase();
@@ -450,6 +487,29 @@
                     occ.className = data.occupancy_mode;
                 })
                 .catch(e => console.log("Polling suspended..."));
+        }
+
+        function formatRelativeTime(isoTs) {
+            if (!isoTs || isoTs === '-') {
+                return 'no data';
+            }
+
+            const dt = new Date(isoTs);
+            if (Number.isNaN(dt.getTime())) {
+                return 'invalid time';
+            }
+
+            const diffSec = Math.max(0, Math.floor((Date.now() - dt.getTime()) / 1000));
+            if (diffSec < 60) return `${diffSec}s ago`;
+
+            const diffMin = Math.floor(diffSec / 60);
+            if (diffMin < 60) return `${diffMin}m ago`;
+
+            const diffHours = Math.floor(diffMin / 60);
+            if (diffHours < 24) return `${diffHours}h ago`;
+
+            const diffDays = Math.floor(diffHours / 24);
+            return `${diffDays}d ago`;
         }
 
         function createSvgLine(points, color) {
@@ -545,19 +605,15 @@
         }
 
         const HISTORY_FETCH_DAYS = 90;
-        let lastHistoryPoints = [];
-        let currentViewDays = 7;
+        const insideHistoryState = { points: [], viewDays: 7, userScrolled: false };
+        const outsideHistoryState = { points: [], viewDays: 7, userScrolled: false };
 
-        function rerenderFromCache() {
-            renderHistoryChart(lastHistoryPoints, currentViewDays);
-        }
-
-        function renderHistoryChart(points, viewDays) {
-            const svg = document.getElementById('historySvg');
-            const chartWrap = document.querySelector('.chart-wrap');
+        function renderHistoryChart(points, viewDays, chartCfg, chartState) {
+            const svg = document.getElementById(chartCfg.svgId);
+            const chartWrap = document.getElementById(chartCfg.wrapId);
             svg.innerHTML = '';
-            lastHistoryPoints = Array.isArray(points) ? points : [];
-            currentViewDays = Number(viewDays) || 7;
+            chartState.points = Array.isArray(points) ? points : [];
+            chartState.viewDays = Number(viewDays) || 7;
 
             const viewportWidth = Math.max(240, chartWrap.clientWidth || 240);
             const height = 200;
@@ -565,7 +621,7 @@
             const padRight = 10;
             const padTop = 14;
             const padBottom = 26;
-            const viewWindowMs = Math.max(1, currentViewDays) * 24 * 60 * 60 * 1000;
+            const viewWindowMs = Math.max(1, chartState.viewDays) * 24 * 60 * 60 * 1000;
 
             const pointsWithTime = points
                 .map((p) => ({ ...p, t: new Date(p.ts).getTime() }))
@@ -582,14 +638,14 @@
             svg.style.width = `${width}px`;
 
             if (!pointsWithTime.length) {
-                renderYAxis('historyYAxisLeft', '#38bdf8', 'C', 0, 1, false);
-                renderYAxis('historyYAxisRight', '#a78bfa', '%', 0, 1, true);
+                renderYAxis(chartCfg.leftAxisId, '#38bdf8', 'C', 0, 1, false);
+                renderYAxis(chartCfg.rightAxisId, '#a78bfa', '%', 0, 1, true);
                 svg.appendChild(createSvgText(120, 100, 'No history in this interval', '#64748b', '12'));
                 return;
             }
 
-            const temps = pointsWithTime.map(p => safeNumber(p.temp, 0));
-            const humids = pointsWithTime.map(p => safeNumber(p.humidity, 0));
+            const temps = pointsWithTime.map(p => safeNumber(p[chartCfg.tempKey], 0));
+            const humids = pointsWithTime.map(p => safeNumber(p[chartCfg.humidityKey], 0));
 
             const tempRange = calcRange(temps, 1.5);
             const humidRange = calcRange(humids, 4);
@@ -599,8 +655,8 @@
             const leftX = padLeft;
             const rightX = width - padRight;
 
-            renderYAxis('historyYAxisLeft', '#38bdf8', 'C', tempRange.min, tempRange.max, false);
-            renderYAxis('historyYAxisRight', '#a78bfa', '%', humidRange.min, humidRange.max, true);
+            renderYAxis(chartCfg.leftAxisId, '#38bdf8', 'C', tempRange.min, tempRange.max, false);
+            renderYAxis(chartCfg.rightAxisId, '#a78bfa', '%', humidRange.min, humidRange.max, true);
 
             const xVals = pointsWithTime.map((p) => {
                 if (maxT === minT) return (leftX + rightX) / 2;
@@ -665,19 +721,26 @@
             svg.appendChild(createSvgText(Math.max(leftX, rightX - 96), 11, `End ${lastLabel}`, '#64748b', '9'));
 
             const nearRightEdge = (chartWrap.scrollWidth - chartWrap.clientWidth - chartWrap.scrollLeft) < 24;
-            if (nearRightEdge || !chartWrap.dataset.userScrolled) {
+            if (nearRightEdge || !chartState.userScrolled) {
                 chartWrap.scrollLeft = chartWrap.scrollWidth;
             }
         }
 
-        async function loadHistory() {
+        async function loadInsideHistory() {
             const days = Number(document.getElementById('historyDays').value) || 7;
             const meta = document.getElementById('historyMeta');
             try {
                 const res = await fetch(`/api/history?days=${HISTORY_FETCH_DAYS}`);
                 const data = await res.json();
                 const points = Array.isArray(data.points) ? data.points : [];
-                renderHistoryChart(points, days);
+                renderHistoryChart(points, days, {
+                    svgId: 'historySvg',
+                    wrapId: 'insideChartWrap',
+                    leftAxisId: 'historyYAxisLeft',
+                    rightAxisId: 'historyYAxisRight',
+                    tempKey: 'temp',
+                    humidityKey: 'humidity'
+                }, insideHistoryState);
 
                 if (!points.length) {
                     meta.innerText = `No samples for last ${days} day(s)`;
@@ -691,22 +754,64 @@
             }
         }
 
-        document.getElementById('historyDays').addEventListener('change', loadHistory);
+        async function loadOutsideHistory() {
+            const days = Number(document.getElementById('outsideHistoryDays').value) || 7;
+            const meta = document.getElementById('outsideHistoryMeta');
+            try {
+                const res = await fetch(`/api/outside/history?days=${HISTORY_FETCH_DAYS}`);
+                const data = await res.json();
+                const points = Array.isArray(data.points) ? data.points : [];
+                renderHistoryChart(points, days, {
+                    svgId: 'outsideHistorySvg',
+                    wrapId: 'outsideChartWrap',
+                    leftAxisId: 'outsideHistoryYAxisLeft',
+                    rightAxisId: 'outsideHistoryYAxisRight',
+                    tempKey: 'temp',
+                    humidityKey: 'humidity'
+                }, outsideHistoryState);
 
-        const historyWrap = document.querySelector('.chart-wrap');
-        historyWrap.addEventListener('scroll', () => {
-            historyWrap.dataset.userScrolled = '1';
+                if (!points.length) {
+                    meta.innerText = `No outside samples for last ${days} day(s)`;
+                    return;
+                }
+
+                const latest = points[points.length - 1];
+                meta.innerText = `View: ${days} day(s) per screen | Available: last ${HISTORY_FETCH_DAYS} day(s) | Samples: ${points.length} | Latest: ${latest.ts.replace('T', ' ')}`;
+            } catch (e) {
+                meta.innerText = 'Could not load outside history';
+            }
+        }
+
+        document.getElementById('historyDays').addEventListener('change', loadInsideHistory);
+        document.getElementById('outsideHistoryDays').addEventListener('change', loadOutsideHistory);
+
+        const insideHistoryWrap = document.getElementById('insideChartWrap');
+        insideHistoryWrap.addEventListener('scroll', () => {
+            insideHistoryState.userScrolled = true;
         });
-        historyWrap.addEventListener('wheel', (e) => {
+        insideHistoryWrap.addEventListener('wheel', (e) => {
             if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-                historyWrap.scrollLeft += e.deltaY;
+                insideHistoryWrap.scrollLeft += e.deltaY;
                 e.preventDefault();
             }
         }, { passive: false });
 
-        loadHistory();
+        const outsideHistoryWrap = document.getElementById('outsideChartWrap');
+        outsideHistoryWrap.addEventListener('scroll', () => {
+            outsideHistoryState.userScrolled = true;
+        });
+        outsideHistoryWrap.addEventListener('wheel', (e) => {
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                outsideHistoryWrap.scrollLeft += e.deltaY;
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        loadInsideHistory();
+        loadOutsideHistory();
         setInterval(updateUI, 2000);
-        setInterval(loadHistory, 60000);
+        setInterval(loadInsideHistory, 60000);
+        setInterval(loadOutsideHistory, 60000);
     </script>
 </body>
 </html>

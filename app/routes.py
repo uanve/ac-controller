@@ -90,6 +90,23 @@ def swagger_spec():
                     }
                 }
             },
+            "/api/outside/history": {
+                "get": {
+                    "summary": "Get outside temperature/humidity history",
+                    "parameters": [
+                        {
+                            "name": "days",
+                            "in": "query",
+                            "required": False,
+                            "schema": {"type": "integer", "minimum": 1, "maximum": config.HISTORY_RETENTION_DAYS},
+                            "description": "Days of outside history to return"
+                        }
+                    ],
+                    "responses": {
+                        "200": {"description": "Outside history payload"}
+                    }
+                }
+            },
             "/api/toggle_occupancy": {
                 "post": {
                     "summary": "Toggle occupancy mode ON/OFF",
@@ -245,6 +262,21 @@ def get_history():
     ]
     return jsonify({"success": True, "days": days, "points": filtered})
 
+@api_blueprint.route('/api/outside/history')
+def get_outside_history():
+    try:
+        days = int(request.args.get("days", 1))
+    except (TypeError, ValueError):
+        days = 1
+    days = max(1, min(days, config.HISTORY_RETENTION_DAYS))
+    cutoff = datetime.now() - timedelta(days=days)
+
+    filtered = [
+        row for row in storage_ptr.outside_temperature_history
+        if datetime.fromisoformat(row["ts"]) >= cutoff
+    ]
+    return jsonify({"success": True, "days": days, "points": filtered})
+
 @api_blueprint.route('/api/outside/report', methods=['POST'])
 def outside_report():
     data = request.get_json(silent=True) or {}
@@ -269,6 +301,9 @@ def outside_report():
 
     state_ptr.outside_status = "online"
     state_ptr.outside_last_update = datetime.now().isoformat(timespec="seconds")
+    storage_ptr.append_outside_history_sample(datetime.now(), state_ptr.outside_temp, state_ptr.outside_humidity)
+    storage_ptr.prune_outside_history()
+    storage_ptr.save_outside_history()
     return jsonify(success=True)
 
 @api_blueprint.route('/api/outside/health')

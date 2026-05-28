@@ -28,13 +28,16 @@ class ApplicationOrchestrator:
         """Loads and syncs memory configurations before starting threads."""
         self.storage.load_state()
         self.storage.load_history()
+        self.storage.load_outside_history()
         self.storage.prune_history()
+        self.storage.prune_outside_history()
         
         for job in self.state.schedule:
             self.storage.normalize_schedule_item(job)
             
         self.storage.save_state()
         self.storage.save_history()
+        self.storage.save_outside_history()
         
         # Launch climate control loop engine
         self.engine.start_engine_loop()

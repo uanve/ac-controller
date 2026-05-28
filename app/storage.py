@@ -8,6 +8,7 @@ class StorageManager:
     def __init__(self, system_state: config.SystemState):
         self.state_obj = system_state
         self.temperature_history: List[Dict[str, Any]] = []
+        self.outside_temperature_history: List[Dict[str, Any]] = []
         self.state_lock = threading.Lock()
         self.history_lock = threading.Lock()
 
@@ -108,10 +109,59 @@ class StorageManager:
         except Exception:
             return []
 
+    def save_outside_history(self):
+        with self.history_lock:
+            for path in [config.OUTSIDE_HISTORY_FILE, config.OUTSIDE_HISTORY_BACKUP_FILE]:
+                tmp = path.with_suffix(".tmp")
+                with tmp.open("w", encoding="utf-8") as f:
+                    json.dump(self.outside_temperature_history, f, indent=2)
+                tmp.replace(path)
+
+    def load_outside_history(self) -> List[Dict[str, Any]]:
+        chosen_source = config.OUTSIDE_HISTORY_FILE if config.OUTSIDE_HISTORY_FILE.exists() else (config.OUTSIDE_HISTORY_BACKUP_FILE if config.OUTSIDE_HISTORY_BACKUP_FILE.exists() else None)
+        if not chosen_source:
+            return []
+
+        try:
+            with chosen_source.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                cleaned = []
+                for entry in data:
+                    if isinstance(entry, dict) and "ts" in entry:
+                        cleaned.append({
+                            "ts": datetime.fromisoformat(str(entry["ts"])).isoformat(timespec="minutes"),
+                            "temp": round(float(entry["temp"]), 2),
+                            "humidity": round(float(entry["humidity"]), 2) if entry.get("humidity") is not None else None
+                        })
+                self.outside_temperature_history = cleaned
+                return cleaned
+        except Exception:
+            return []
+
+    def append_outside_history_sample(self, sample_dt: datetime, temp: float, humidity: float):
+        slot = sample_dt.strftime("%Y-%m-%dT%H:%M")
+        row = {
+            "ts": slot,
+            "temp": round(float(temp), 2),
+            "humidity": round(float(humidity), 2)
+        }
+
+        if self.outside_temperature_history and self.outside_temperature_history[-1]["ts"] == slot:
+            self.outside_temperature_history[-1] = row
+        else:
+            self.outside_temperature_history.append(row)
+
     def prune_history(self):
         limit = datetime.now() - timedelta(days=config.HISTORY_RETENTION_DAYS)
         self.temperature_history = [
             row for row in self.temperature_history 
+            if datetime.fromisoformat(row["ts"]) >= limit
+        ]
+
+    def prune_outside_history(self):
+        limit = datetime.now() - timedelta(days=config.HISTORY_RETENTION_DAYS)
+        self.outside_temperature_history = [
+            row for row in self.outside_temperature_history
             if datetime.fromisoformat(row["ts"]) >= limit
         ]
         

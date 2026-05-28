@@ -24,6 +24,8 @@ STATE_FILE = DATA_DIR / "state_store.json"
 STATE_BACKUP_FILE = DATA_DIR / "state_store.backup.json"
 HISTORY_FILE = DATA_DIR / "temperature_history.json"
 HISTORY_BACKUP_FILE = DATA_DIR / "temperature_history.backup.json"
+OUTSIDE_HISTORY_FILE = DATA_DIR / "outside_temperature_history.json"
+OUTSIDE_HISTORY_BACKUP_FILE = DATA_DIR / "outside_temperature_history.backup.json"
 
 # --- Hardware Properties ---
 AC_RELAY_PIN = 27 
