@@ -1,0 +1,6 @@
+nohup.out
+state_store.backup.json
+state_store.json
+temperature_history.backup.json
+temperature_history.json
+__pycache__/app.cpython-313.pyc

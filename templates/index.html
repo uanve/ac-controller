@@ -644,7 +644,8 @@
             }
         }
 
-        const HISTORY_FETCH_DAYS = 90;
+        const STATUS_POLL_MS = 5000;
+        const HISTORY_REFRESH_MS = 300000;
         const insideHistoryState = { points: [], viewDays: 7, userScrolled: false };
         const outsideHistoryState = { points: [], viewDays: 7, userScrolled: false };
 
@@ -770,7 +771,7 @@
             const days = Number(document.getElementById('historyDays').value) || 7;
             const meta = document.getElementById('historyMeta');
             try {
-                const res = await fetch(`/api/history?days=${HISTORY_FETCH_DAYS}`);
+                const res = await fetch(`/api/history?days=${days}`);
                 const data = await res.json();
                 const points = Array.isArray(data.points) ? data.points : [];
                 renderHistoryChart(points, days, {
@@ -788,7 +789,7 @@
                 }
 
                 const latest = points[points.length - 1];
-                meta.innerText = `View: ${days} day(s) per screen | Available: last ${HISTORY_FETCH_DAYS} day(s) | Samples: ${points.length} | Latest: ${latest.ts.replace('T', ' ')}`;
+                meta.innerText = `View: ${days} day(s) | Samples: ${points.length} | Latest: ${latest.ts.replace('T', ' ')}`;
             } catch (e) {
                 meta.innerText = 'Could not load history';
             }
@@ -798,7 +799,7 @@
             const days = Number(document.getElementById('outsideHistoryDays').value) || 7;
             const meta = document.getElementById('outsideHistoryMeta');
             try {
-                const res = await fetch(`/api/outside/history?days=${HISTORY_FETCH_DAYS}`);
+                const res = await fetch(`/api/outside/history?days=${days}`);
                 const data = await res.json();
                 const points = Array.isArray(data.points) ? data.points : [];
                 renderHistoryChart(points, days, {
@@ -816,10 +817,19 @@
                 }
 
                 const latest = points[points.length - 1];
-                meta.innerText = `View: ${days} day(s) per screen | Available: last ${HISTORY_FETCH_DAYS} day(s) | Samples: ${points.length} | Latest: ${latest.ts.replace('T', ' ')}`;
+                meta.innerText = `View: ${days} day(s) | Samples: ${points.length} | Latest: ${latest.ts.replace('T', ' ')}`;
             } catch (e) {
                 meta.innerText = 'Could not load outside history';
             }
+        }
+
+        function refreshLivePanels() {
+            if (document.hidden) {
+                return;
+            }
+            updateUI();
+            loadInsideHistory();
+            loadOutsideHistory();
         }
 
         document.getElementById('historyDays').addEventListener('change', loadInsideHistory);
@@ -849,9 +859,21 @@
 
         loadInsideHistory();
         loadOutsideHistory();
-        setInterval(updateUI, 2000);
-        setInterval(loadInsideHistory, 60000);
-        setInterval(loadOutsideHistory, 60000);
+        setInterval(() => {
+            if (!document.hidden) updateUI();
+        }, STATUS_POLL_MS);
+        setInterval(() => {
+            if (!document.hidden) loadInsideHistory();
+        }, HISTORY_REFRESH_MS);
+        setInterval(() => {
+            if (!document.hidden) loadOutsideHistory();
+        }, HISTORY_REFRESH_MS);
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                refreshLivePanels();
+            }
+        });
     </script>
 </body>
 </html>

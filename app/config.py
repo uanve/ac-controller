@@ -36,7 +36,6 @@ COOL_COMMAND_FILES = {
 }
 DRY_COMMAND_FILE = COMMANDS_DIR / "dry.txt"
 IR_OFF_FILE = COMMANDS_DIR / "off.txt"
-IR_ON_FILE = COOL_COMMAND_FILES[24]
 OUTSIDE_SENSOR_URL = "http://192.168.1.160/"
 OUTSIDE_SENSOR_TIMEOUT_SECONDS = 1.5
 OUTSIDE_SENSOR_POLL_INTERVAL_SECONDS = 30
@@ -51,6 +50,7 @@ def nearest_cool_command_temp(target_temp: float) -> int:
 
 # --- Constants & Calendars ---
 HISTORY_RETENTION_DAYS = 90
+ENGINE_LOOP_INTERVAL_SECONDS = 5.0
 WEEK_DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 DAY_ORDER = {"ALL": -1, **{day: idx for idx, day in enumerate(WEEK_DAYS)}}
 PERSISTED_KEYS = ["occupancy_mode", "target_temp", "target_humidity", "schedule_running", "schedule"]

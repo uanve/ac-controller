@@ -130,6 +130,7 @@ class ClimateLogicEngine:
     def start_engine_loop(self):
         """Spawns the background telemetry worker thread context."""
         def run():
+            loop_sleep = max(1.0, float(getattr(config, "ENGINE_LOOP_INTERVAL_SECONDS", 5.0)))
             while True:
                 self.state.current_temp, self.state.current_humidity = self.hw.read_sensors()
                 now = datetime.now()
@@ -139,7 +140,7 @@ class ClimateLogicEngine:
                 self.process_schedule(now)
                 self.update_climate_logic()
                 
-                time.sleep(2)
+                time.sleep(loop_sleep)
 
         t = threading.Thread(target=run, daemon=True)
         t.start()
