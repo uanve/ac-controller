@@ -29,13 +29,25 @@ OUTSIDE_HISTORY_BACKUP_FILE = DATA_DIR / "outside_temperature_history.backup.jso
 
 # --- Hardware Properties ---
 AC_RELAY_PIN = 27 
-IR_ON_FILE = COMMANDS_DIR / "on_24.txt"
+COOL_COMMAND_FILES = {
+    22: COMMANDS_DIR / "cool_22.txt",
+    24: COMMANDS_DIR / "cool_24.txt",
+    26: COMMANDS_DIR / "cool_26.txt",
+}
+DRY_COMMAND_FILE = COMMANDS_DIR / "dry.txt"
 IR_OFF_FILE = COMMANDS_DIR / "off.txt"
+IR_ON_FILE = COOL_COMMAND_FILES[24]
 OUTSIDE_SENSOR_URL = "http://192.168.1.160/"
 OUTSIDE_SENSOR_TIMEOUT_SECONDS = 1.5
 OUTSIDE_SENSOR_POLL_INTERVAL_SECONDS = 30
 OUTSIDE_SENSOR_STALE_SECONDS = 1800
 OUTSIDE_INGEST_TOKEN = ""
+
+
+def nearest_cool_command_temp(target_temp: float) -> int:
+    target = float(target_temp)
+    available = sorted(COOL_COMMAND_FILES.keys())
+    return min(available, key=lambda t: abs(t - target))
 
 # --- Constants & Calendars ---
 HISTORY_RETENTION_DAYS = 90
@@ -72,6 +84,7 @@ class SystemState:
             {"id": 1, "time": "18:00", "action_mode": "OFF", "target_temp": 24.0, "active": True, "days": ["ALL"]}
         ]
         self.last_trigger: str = ""
+        self.last_ir_command: str = "off"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -92,7 +105,8 @@ class SystemState:
             "outside_last_update": self.outside_last_update,
             "schedule_running": self.schedule_running,
             "schedule": self.schedule,
-            "last_trigger": self.last_trigger
+            "last_trigger": self.last_trigger,
+            "last_ir_command": self.last_ir_command
         }
 
     def from_dict(self, data: Dict[str, Any]):
@@ -112,3 +126,4 @@ class SystemState:
         self.schedule_running = bool(data.get("schedule_running", self.schedule_running))
         self.schedule = data.get("schedule", self.schedule)
         self.last_trigger = data.get("last_trigger", self.last_trigger)
+        self.last_ir_command = str(data.get("last_ir_command", self.last_ir_command))

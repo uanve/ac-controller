@@ -184,7 +184,22 @@
             <span style="font-size: 0.8rem; opacity: 0.7; letter-spacing: 1px;">LIVE METRICS</span>
             <span>
                 <div id="acLed" class="ac-glow glow-{{ state.ac_power }}"></div>
-                <small id="acText" style="font-weight: bold;">AC {{ state.ac_power }}</small>
+                <small id="acText" style="font-weight: bold;">
+                    {% if state.ac_power != 'ON' %}
+                        AC OFF
+                    {% elif state.ac_mode == 'DRY' %}
+                        AC DRY
+                    {% elif state.target_temp <= 23 %}
+                        AC COOL22
+                    {% elif state.target_temp <= 25 %}
+                        AC COOL24
+                    {% else %}
+                        AC COOL26
+                    {% endif %}
+                </small>
+                <div style="font-size: 0.72rem; opacity: 0.75; margin-top: 2px;">
+                    Last IR: <span id="lastIrCmd">{{ state.last_ir_command|default('off')|upper }}</span>
+                </div>
             </span>
         </div>
         
@@ -458,6 +473,30 @@
             btn.addEventListener('click', () => apiCall('/api/schedule/delete', {id: Number(btn.dataset.id)}));
         });
 
+        function formatAcStatusText(data) {
+            const power = String(data.ac_power || 'OFF').toUpperCase();
+            const mode = String(data.ac_mode || 'OFF').toUpperCase();
+            if (power !== 'ON') {
+                return 'AC OFF';
+            }
+            if (mode === 'DRY') {
+                return 'AC DRY';
+            }
+            const targetTemp = Number(data.target_temp || 24);
+            const coolTemp = targetTemp <= 23 ? 22 : (targetTemp <= 25 ? 24 : 26);
+            return `AC COOL${coolTemp}`;
+        }
+
+        function getAcStatusColor(data) {
+            const power = String(data.ac_power || 'OFF').toUpperCase();
+            if (power !== 'ON') {
+                return 'inherit';
+            }
+
+            const mode = String(data.ac_mode || 'OFF').toUpperCase();
+            return mode === 'DRY' ? '#a78bfa' : '#00f2ff';
+        }
+
         function updateUI() {
             fetch('/api/status')
                 .then(res => res.json())
@@ -479,8 +518,9 @@
                     const acLed = document.getElementById('acLed');
                     const acTxt = document.getElementById('acText');
                     acLed.className = 'ac-glow glow-' + data.ac_power;
-                    acTxt.innerText = "AC " + (data.ac_power === 'ON' ? 'COOLING' : 'IDLE');
-                    acTxt.style.color = data.ac_power === 'ON' ? '#00f2ff' : 'inherit';
+                    acTxt.innerText = formatAcStatusText(data);
+                    acTxt.style.color = getAcStatusColor(data);
+                    document.getElementById('lastIrCmd').innerText = String(data.last_ir_command || 'off').toUpperCase();
 
                     const occ = document.getElementById('occStatus');
                     occ.innerText = data.occupancy_mode === 'ON' ? 'HOME' : 'AWAY';

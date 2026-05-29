@@ -29,7 +29,7 @@ class ClimateLogicEngine:
         if self.state.occupancy_mode == "OFF":
             if self.state.ac_power != "OFF":
                 self.state.ac_power = "OFF"
-                self.hw.send_ir_command("OFF", self.state.ac_mode)
+                self.state.last_ir_command = self.hw.send_ir_command("OFF", self.state.ac_mode, self.state.target_temp)
             return
 
         current_temp = self.state.current_temp
@@ -63,20 +63,7 @@ class ClimateLogicEngine:
         desired_power = "OFF"
         desired_mode = self.state.ac_mode
 
-        if needs_cooling and needs_drying:
-            t_delta = self.state.temp_hysteresis or 1
-            h_delta = self.state.humidity_hysteresis or 1
-
-            temp_severity = (current_temp - target_temp) / t_delta
-            hum_severity = (current_hum - target_hum) / h_delta
-
-            desired_power = "ON"
-            if temp_severity >= hum_severity:
-                desired_mode = config.ACMode.COOL
-            else:
-                desired_mode = config.ACMode.DRY
-
-        elif needs_cooling:
+        if needs_cooling:
             desired_power = "ON"
             desired_mode = config.ACMode.COOL
 
@@ -86,11 +73,13 @@ class ClimateLogicEngine:
 
         mode_changed = desired_mode != self.state.ac_mode
         power_changed = desired_power != self.state.ac_power
+        _, desired_command_name = self.hw.resolve_ir_target(desired_power, desired_mode, target_temp)
+        command_changed = desired_command_name != str(self.state.last_ir_command)
 
-        if power_changed or mode_changed:
+        if power_changed or mode_changed or command_changed:
             self.state.ac_power = desired_power
             self.state.ac_mode = desired_mode
-            self.hw.send_ir_command(desired_power, desired_mode)
+            self.state.last_ir_command = self.hw.send_ir_command(desired_power, desired_mode, target_temp)
 
     def process_schedule(self, now_dt: datetime):
         if not self.state.schedule_running:

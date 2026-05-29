@@ -28,9 +28,24 @@ class HardwareManager:
                 pass
         return (28.5, 62.0)  
 
-    def send_ir_command(self, power_status: str, mode: config.ACMode):
-        """Sends physical commands. Ready for future modular mode expansions."""
+    def resolve_ir_target(self, power_status: str, mode: config.ACMode, target_temp: float = 24.0):
+        is_on = (str(power_status).upper() == "ON")
+        mode_str = mode.value if hasattr(mode, 'value') else str(mode)
+        normalized_mode = str(mode_str).upper().replace("ACMODE.", "")
+
+        if not is_on or normalized_mode == "OFF":
+            return (config.IR_OFF_FILE, "off")
+
+        if normalized_mode == "DRY":
+            return (config.DRY_COMMAND_FILE, "dry")
+
+        cool_temp = config.nearest_cool_command_temp(target_temp)
+        return (config.COOL_COMMAND_FILES[cool_temp], f"cool_{cool_temp}")
+
+    def send_ir_command(self, power_status: str, mode: config.ACMode, target_temp: float = 24.0) -> str:
+        """Send IR command and return the normalized command name (e.g. cool_24, dry, off)."""
         is_on = (power_status == "ON")
+        file_target, command_name = self.resolve_ir_target(power_status, mode, target_temp)
         
         try:
             GPIO.output(config.AC_RELAY_PIN, GPIO.HIGH if is_on else GPIO.LOW)
@@ -38,24 +53,17 @@ class HardwareManager:
             print(f"GPIO Output Failure: {e}")
 
         if not is_on:
-            file_target = config.IR_OFF_FILE
             print(f"[{datetime.now().strftime('%H:%M:%S')}] IR ACTION -> Sending POWER OFF")
         else:
-            if str(mode) == "COOL" or str(mode) == "ACMode.COOL":
-                file_target = config.IR_ON_FILE
-            elif str(mode) == "DRY" or str(mode) == "ACMode.DRY":
-                file_target = config.COMMANDS_DIR / "dry_mode.txt" 
-            else:
-                file_target = config.IR_ON_FILE
-            
-            # Extract safe logging name string
             mode_str = mode.value if hasattr(mode, 'value') else str(mode)
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] IR ACTION -> Sending POWER ON Mode: {mode_str}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] IR ACTION -> Sending POWER ON Mode: {mode_str} Command: {command_name}")
 
         try:
             subprocess.run(["ir-ctl", "-d", "/dev/lirc0", f"--send={str(file_target)}"], check=True)
         except Exception as e:
             print(f"IR Transmit execution error: {e}")
+
+        return command_name
 
     def cleanup(self):
         try:
